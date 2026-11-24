@@ -1,0 +1,24 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "env": {
+    "SIDECAR_UI_VERSION": "3"
+  },
+  "restart_policy": "always",
+  "display_name": "上下文与吞吐监控",
+  "description": "实时监控当前对话的上下文窗口占用、KV 缓存命中率及模型输出吞吐量（token/s）。",
+  "has_web_ui": true,
+  "agent_permissions": {
+    "allows_user_interactions": false
+  },
+  "ui_config": {
+    "display_name": "上下文与吞吐监控",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "上下文与吞吐"
+      }
+    ]
+  }
+}

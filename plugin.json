@@ -1,0 +1,7 @@
+{
+  "name": "telemetry-monitor",
+  "displayName": "上下文与吞吐监控",
+  "version": "1.0.0",
+  "description": "在 Antigravity 2.0 右侧辅助面板实时展示会话上下文窗口占用率、缓存命中率、子代理消耗及模型推理吞吐量（token/s）。",
+  "logo": "assets/logo.svg"
+}

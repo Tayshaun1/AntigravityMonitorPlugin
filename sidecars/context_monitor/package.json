@@ -1,0 +1,6 @@
+{
+  "name": "context_monitor",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Live context window usage and token/s throughput sidecar for Antigravity 2.0"
+}

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="frame-src 'none'; child-src 'none'">
+  <title>上下文与吞吐监控</title>
+  <script src="/preload.js"></script>
+  <link rel="stylesheet" href="/styles.css?v=3">
+  <script defer src="/app.js?v=3"></script>
+</head>
+<body>
+  <div class="shell">
+    <!-- Top Header -->
+    <header class="top-header">
+      <div class="header-main">
+        <div class="title-wrap">
+          <h1 class="panel-title">上下文与吞吐监控</h1>
+          <div class="title-actions">
+            <span id="live-pill" class="live-pill idle" role="status" aria-live="polite">
+              <span class="live-dot" aria-hidden="true"></span>
+              <span id="live-text">实时监控</span>
+            </span>
+            <button id="refresh-ui-btn" type="button" class="icon-btn" title="强制刷新面板样式与数据">↻ 刷新</button>
+          </div>
+        </div>
+        <div class="sub-bar">
+          <span id="model-badge" class="model-badge" title="当前会话检测到的模型配置">默认模型 (Auto)</span>
+          <label class="sr-only" for="conv-select">选择会话</label>
+          <select id="conv-select" class="compact-select conv-select" title="切换查看的本地会话">
+            <option value="">当前会话</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <div id="error-banner" class="error-banner hidden" role="alert"></div>
+
+    <main class="cards">
+      <!-- Section 1: Context Window -->
+      <section class="card" aria-labelledby="sec-context-title">
+        <div class="card-head">
+          <div class="card-title-row">
+            <h2 id="sec-context-title" class="card-title">上下文窗口占用</h2>
+            <div class="limit-controls">
+              <label class="limit-label" for="limit-select">参考上限</label>
+              <select id="limit-select" class="compact-select">
+                <option value="1000000">1M (Gemini)</option>
+                <option value="256000">256k</option>
+                <option value="200000">200k (Claude)</option>
+                <option value="135000">135k (压缩线)</option>
+                <option value="custom">自定义…</option>
+              </select>
+              <div id="custom-limit-wrap" class="custom-limit-wrap hidden">
+                <input
+                  id="custom-limit-input"
+                  type="number"
+                  min="8"
+                  max="4096"
+                  step="1"
+                  value="200"
+                  aria-label="自定义上下文上限 (k tokens)"
+                >
+                <span class="unit">k</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="primary-readout">
+            <div class="readout-left">
+              <strong id="ctx-active" class="readout-strong">0</strong>
+              <span class="readout-sep">/</span>
+              <span id="ctx-limit" class="readout-limit">1,000k</span>
+              <span id="ctx-pct" class="readout-pct">0.0%</span>
+            </div>
+            <button id="copy-compact-btn" type="button" class="action-btn" title="复制 /compact 命令到剪贴板，用于手动压缩上下文">
+              复制 /compact
+            </button>
+          </div>
+        </div>
+
+        <!-- Stacked Context Bar -->
+        <div class="bar-wrap">
+          <div class="stacked-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="ctx-progressbar">
+            <div id="seg-cache" class="seg seg-cache" title="KV 缓存命中"></div>
+            <div id="seg-input" class="seg seg-input" title="新增输入"></div>
+            <div id="seg-output" class="seg seg-output" title="单步输出"></div>
+          </div>
+          <div id="compaction-marker" class="compaction-marker" title="官方自动压缩参考水位 (~135k tokens)">
+            <span class="marker-line"></span>
+            <span class="marker-label">~135k 压缩线</span>
+          </div>
+        </div>
+
+        <div class="bar-legend">
+          <span class="legend-item"><i class="dot dot-cache"></i>缓存命中 <span id="leg-cache">0</span></span>
+          <span class="legend-item"><i class="dot dot-input"></i>新增输入 <span id="leg-input">0</span></span>
+          <span class="legend-item"><i class="dot dot-output"></i>模型输出 <span id="leg-output">0</span></span>
+        </div>
+
+        <!-- 4-metric mini grid -->
+        <div class="mini-grid">
+          <div class="mini-tile">
+            <span class="mini-label">KV 缓存命中率</span>
+            <strong id="m-cache-rate" class="mini-val">0%</strong>
+            <span id="m-cache-sub" class="mini-sub">0 tok</span>
+          </div>
+          <div class="mini-tile">
+            <span class="mini-label">本步新增输入</span>
+            <strong id="m-uncached" class="mini-val">0</strong>
+            <span id="m-total-in" class="mini-sub">累计 0</span>
+          </div>
+          <div class="mini-tile">
+            <span class="mini-label">本步模型输出</span>
+            <strong id="m-out" class="mini-val">0</strong>
+            <span id="m-total-out" class="mini-sub">累计 0</span>
+          </div>
+          <div class="mini-tile">
+            <span class="mini-label">压缩次数 / 子代理</span>
+            <strong id="m-compaction" class="mini-val">0 次</strong>
+            <span id="m-subagents" class="mini-sub">0 个子代理</span>
+          </div>
+        </div>
+
+        <!-- Context Composition -->
+        <div class="composition-block">
+          <div class="comp-head">
+            <span class="comp-title">上下文构成估算</span>
+            <span id="comp-peak" class="comp-peak">峰值 0</span>
+          </div>
+          <div class="comp-bar" id="comp-bar">
+            <div id="comp-sys" class="cseg cseg-sys"></div>
+            <div id="comp-tool" class="cseg cseg-tool"></div>
+            <div id="comp-model" class="cseg cseg-model"></div>
+            <div id="comp-user" class="cseg cseg-user"></div>
+          </div>
+          <div class="comp-legend">
+            <span><i class="dot c-sys"></i>系统指令 <b id="pct-sys">0%</b></span>
+            <span><i class="dot c-tool"></i>工具返回 <b id="pct-tool">0%</b></span>
+            <span><i class="dot c-model"></i>模型回复 <b id="pct-model">0%</b></span>
+            <span><i class="dot c-user"></i>用户输入 <b id="pct-user">0%</b></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Throughput -->
+      <section class="card" aria-labelledby="sec-tps-title">
+        <div class="card-head">
+          <div class="card-title-row">
+            <h2 id="sec-tps-title" class="card-title">推理吞吐量 (token/s)</h2>
+            <span id="tps-step-count" class="muted-meta">0 步已测速</span>
+          </div>
+        </div>
+
+        <div class="tps-grid">
+          <div class="tps-tile highlight">
+            <span class="tps-label">最新吞吐</span>
+            <div class="tps-num-row">
+              <strong id="tps-latest" class="tps-val">—</strong>
+              <span class="tps-unit">tok/s</span>
+            </div>
+            <span id="tps-latest-sub" class="tps-sub">等待记录</span>
+          </div>
+          <div class="tps-tile">
+            <span class="tps-label">会话均值</span>
+            <div class="tps-num-row">
+              <strong id="tps-avg" class="tps-val">—</strong>
+              <span class="tps-unit">tok/s</span>
+            </div>
+            <span id="tps-avg-sub" class="tps-sub">输出加权平均</span>
+          </div>
+          <div class="tps-tile">
+            <span class="tps-label">峰值吞吐</span>
+            <div class="tps-num-row">
+              <strong id="tps-peak" class="tps-val">—</strong>
+              <span class="tps-unit">tok/s</span>
+            </div>
+            <span id="tps-total-sub" class="tps-sub">总吞吐 —</span>
+          </div>
+        </div>
+
+        <div class="spark-wrap">
+          <div class="spark-head">
+            <span>近 20 步输出速率趋势</span>
+            <span id="spark-hover" class="spark-hover">悬停柱条查看详情</span>
+          </div>
+          <div id="spark-bars" class="spark-bars" role="img" aria-label="近期推理步骤输出吞吐量柱状图"></div>
+        </div>
+      </section>
+
+      <!-- Section 3: Recent Steps Table -->
+      <section class="card" aria-labelledby="sec-steps-title">
+        <div class="card-head">
+          <div class="card-title-row">
+            <h2 id="sec-steps-title" class="card-title">最近推理步骤明细</h2>
+            <span id="last-updated" class="muted-meta">—</span>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="steps-table">
+            <thead>
+              <tr>
+                <th>步骤</th>
+                <th>上下文</th>
+                <th>缓存率</th>
+                <th>输出</th>
+                <th>耗时</th>
+                <th>吞吐</th>
+              </tr>
+            </thead>
+            <tbody id="steps-tbody">
+              <tr><td colspan="6" class="empty-row">正在读取会话日志…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
